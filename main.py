@@ -158,9 +158,9 @@ def summarize_full(messages):
     return merged_summaries
 
 
-async def send_long_message(ctx, text):
+async def send_long_message(target, text):
     for i in range(0, len(text), 2000):
-        await ctx.send(
+        await target.send(
             text[i:i+2000],
             allowed_mentions=discord.AllowedMentions.none()
         )
@@ -168,55 +168,68 @@ async def send_long_message(ctx, text):
 
 @commands.cooldown(1, 60, commands.BucketType.channel)
 @bot.command()
-async def tldr(ctx, hours: int = 6, bots: str = "yes"):
-    """Single TLDR"""
+async def tldr(
+    ctx,
+    hours: int = 6,
+    source_channel: discord.TextChannel = None,
+    output_channel: discord.TextChannel = None,
+    bots: str = "yes",
+):
+    source = source_channel or ctx.channel
+    output = output_channel or ctx.channel
+
     if hours > 720:
-        await ctx.send("Maximum allowed range is 720 hours.")
+        await output.send("Maximum allowed range is 720 hours.")
         return
 
     include_bots = bots.lower() not in {"no", "n", "false", "0"}
     messages = await get_messages(
-        ctx.channel,
+        source,
         hours,
-        command_message_id=ctx.message.id,
+        command_message_id=ctx.message.id if source.id == ctx.channel.id else None,
         include_bots=include_bots
     )
 
     if not messages:
-        await ctx.send("No messages found in that time window.")
+        await output.send("No messages found in that time window.")
         return
 
-    await ctx.send("Summarizing conversation...", allowed_mentions=discord.AllowedMentions.none())
+    await output.send("Summarizing conversation...", allowed_mentions=discord.AllowedMentions.none())
     summary = summarize_chunk(messages, compact=True)
-    await send_long_message(ctx, summary)
+    await send_long_message(output, summary)
 
 
 @commands.cooldown(1, 60, commands.BucketType.channel)
 @bot.command()
-async def tldr_full(ctx, hours: int = 6, bots: str = "yes"):
-    """Chunked TLDR"""
+async def tldr_full(
+    ctx,
+    hours: int = 6,
+    source_channel: discord.TextChannel = None,
+    output_channel: discord.TextChannel = None,
+    bots: str = "yes",
+):
+    source = source_channel or ctx.channel
+    output = output_channel or ctx.channel
+
     if hours > 720:
-        await ctx.send("Maximum allowed range is 720 hours.")
+        await output.send("Maximum allowed range is 720 hours.")
         return
 
     include_bots = bots.lower() not in {"no", "n", "false", "0"}
     messages = await get_messages(
-        ctx.channel,
+        source,
         hours,
-        command_message_id=ctx.message.id,
+        command_message_id=ctx.message.id if source.id == ctx.channel.id else None,
         include_bots=include_bots
     )
 
     if not messages:
-        await ctx.send("No messages found in that time window.")
+        await output.send("No messages found in that time window.")
         return
 
-    await ctx.send(
-        "Summarizing conversation in parts...",
-        allowed_mentions=discord.AllowedMentions.none()
-    )
+    await output.send("Summarizing conversation in parts...", allowed_mentions=discord.AllowedMentions.none())
     summary = summarize_full(messages)
-    await send_long_message(ctx, summary)
+    await send_long_message(output, summary)
 
 
 @bot.event
