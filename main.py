@@ -12,7 +12,7 @@ import traceback
 
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 TOKEN = os.getenv("DISCORD_TOKEN")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_KEY = os.getenv("GEMINI_KEY")
 
 genai.configure(api_key=GEMINI_KEY)
 model = genai.GenerativeModel("gemini-2.5-flash")
