@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 import re
+import traceback
 
 
 
@@ -235,9 +236,14 @@ async def tldr_full(
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandOnCooldown):
-        await ctx.send("cooldwon")
+        await ctx.send("cooldown")
         return
-    raise error
+
+    print("----- COMMAND ERROR -----")
+    traceback.print_exception(type(error), error, error.__traceback__)
+    print("-------------------------")
+
+    await ctx.send("Command failed. Check logs.", allowed_mentions=discord.AllowedMentions.none())
 
 @bot.event
 async def on_ready():
