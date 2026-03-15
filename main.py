@@ -232,4 +232,3 @@ async def on_ready():
 
 bot.run(TOKEN)
 
-#https://discord.com/oauth2/authorize?client_id=1482553762559299728&permissions=68608&integration_type=0&scope=bot+applications.commands
