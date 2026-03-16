@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-import google.generativeai as genai
+from groq import Groq
 from datetime import datetime, timedelta
 import os
 from pathlib import Path
@@ -12,10 +12,15 @@ import traceback
 
 load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 TOKEN = os.getenv("DISCORD_TOKEN")
-GEMINI_KEY = os.getenv("GEMINI_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash-lite")
+if not TOKEN:
+    raise RuntimeError("Missing DISCORD_TOKEN in .env")
+if not GROQ_API_KEY:
+    raise RuntimeError("Missing GROQ_API_KEY in .env")
+
+client = Groq(api_key=GROQ_API_KEY)
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -138,16 +143,19 @@ Conversation:
 {text}
 """
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config={"temperature": 0.7, "top_p": 0.9},
+        completion = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            top_p=0.9,
         )
-        cleaned = sanitize_summary(response.text or "")
+        raw = completion.choices[0].message.content or ""
+        cleaned = sanitize_summary(raw)
         if compact:
             return enforce_tldr_shape(cleaned, max_sections=5)
         return cleaned
     except Exception:
-        return "[Gemini API limit reached or request failed]"
+        return "[Groq API request failed]"
 
 
 def summarize_full(messages):
