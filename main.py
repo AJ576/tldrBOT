@@ -52,9 +52,15 @@ def sanitize_summary(text: str) -> str:
     if not text:
         return text
 
-    # Remove cliché opener if model still adds it
     text = re.sub(
         r"^\s*(welcome to|here's|in this|buckle up|behold)[^.!?\n]*[.!?]\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    text = re.sub(
+        r"^\s*(final tldr|tldr)\s*:\s*",
         "",
         text,
         flags=re.IGNORECASE,
@@ -63,48 +69,43 @@ def sanitize_summary(text: str) -> str:
     return text.strip()
 
 
-def enforce_tldr_shape(text: str, max_paragraphs: int = 5) -> str:
+def enforce_tldr_shape(text: str, max_sections: int = 5) -> str:
     """
     Keep single TLDR readable:
-    - max 5 paragraphs
-    - each paragraph short-ish
+    - max 5 sections
+    - each section has a bold heading
+    - short body under each heading
     """
     if not text:
         return text
 
-    # Remove markdown headings/bullets if model adds them
-    lines = []
-    for ln in text.splitlines():
-        ln = re.sub(r"^\s*(#{1,6}\s*|\-+\s*|\*\s+|\d+\.\s+)", "", ln).strip()
-        if ln:
-            lines.append(ln)
-    text = "\n".join(lines)
+    text = text.replace("\r\n", "\n").strip()
+    sections = [s.strip() for s in re.split(r"\n\s*\n+", text) if s.strip()]
 
-    # Split paragraphs (or fallback to sentence chunks)
-    paras = [p.strip() for p in re.split(r"\n\s*\n+", text) if p.strip()]
-    if len(paras) <= 1:
-        sentences = re.split(r"(?<=[.!?])\s+", text.strip())
-        sentences = [s.strip() for s in sentences if s.strip()]
-        paras = []
-        buf = []
-        for s in sentences:
-            buf.append(s)
-            if len(buf) >= 3:  # ~3 sentences per paragraph
-                paras.append(" ".join(buf))
-                buf = []
-        if buf:
-            paras.append(" ".join(buf))
+    cleaned_sections = []
+    for section in sections[:max_sections]:
+        lines = [ln.strip() for ln in section.splitlines() if ln.strip()]
+        if not lines:
+            continue
 
-    # Limit sentences per paragraph
-    trimmed_paras = []
-    for p in paras[:max_paragraphs]:
-        sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", p) if s.strip()]
-        trimmed_paras.append(" ".join(sents[:4]))  # max 4 sentences each
+        heading = lines[0]
+        body = " ".join(lines[1:]).strip()
 
-    out = "\n\n".join(trimmed_paras).strip()
+        # If the model forgot the bold heading, force one.
+        if not re.match(r"^\*\*.*\*\*$", heading):
+            heading = heading.strip(":")
+            heading = f"**{heading}**"
 
+        # Keep body short.
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", body) if s.strip()]
+        body = " ".join(sentences[:4]).strip()
 
-    return out
+        if body:
+            cleaned_sections.append(f"{heading}\n{body}")
+        else:
+            cleaned_sections.append(heading)
+
+    return "\n\n".join(cleaned_sections).strip()
 
 
 def summarize_chunk(chunk, compact: bool = False):
@@ -113,8 +114,14 @@ def summarize_chunk(chunk, compact: bool = False):
     extra_rules = ""
     if compact:
         extra_rules = """
-- Output ONLY 3 to 5 short paragraphs.
-- Each paragraph should be 4-6 short sentences.
+- Output ONLY 3 to 5 sections.
+- Each section must start with a short bold heading in Markdown, like: **🔥 Some Heading**
+- After each heading, write 2 to 4 short sentences.
+- Bold every person's name when mentioned, like **Aditya** or **dabi**.
+- Leave one blank line between sections.
+- No bullets.
+- No intro line.
+- No conclusion line.
 - Keep it concise and readable.
 """
 
@@ -124,7 +131,6 @@ You are summarizing a Discord chat.
 Rules (strict):
 - Be humorous/sarcastic.
 - DO NOT start with scene-setting phrases like "Welcome to...", "In this...", "Here's...".
-- Bold every person's name when mentioned, like **Aditya** or **dabi**.
 - Start immediately with content.
 {extra_rules}
 
@@ -138,7 +144,7 @@ Conversation:
         )
         cleaned = sanitize_summary(response.text or "")
         if compact:
-            return enforce_tldr_shape(cleaned, max_paragraphs=5)
+            return enforce_tldr_shape(cleaned, max_sections=5)
         return cleaned
     except Exception:
         return "[Gemini API limit reached or request failed]"
