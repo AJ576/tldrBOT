@@ -121,27 +121,37 @@ def summarize_chunk(chunk, compact: bool = False):
     text = "\n".join(chunk)
 
     extra_rules = """
-- Output ONLY 5 to 6 sections.
-- Each section must start with a short bold heading in Markdown with an emoji, like: **🔥 Some Heading**
-- After each heading, write 3 to 6 short sentences.
-- Bold every person's name when mentioned, like **Aditya** or **dabi**.
-- Leave one blank line between sections.
-- No bullets.
-- No intro line.
-- No conclusion line.
-"""
+    - Output ONLY 5 to 6 sections.
+    - Each section must start with a short bold heading in Markdown with an emoji, like: **🔥 Some Heading**
+    - After each heading, write 3 to 5 short sentences.
+    - Bold every person's name when mentioned, like **Aditya** or **dabi**.
+    - Leave one blank line between sections.
+    - No bullets.
+    - No intro line.
+    - No conclusion line.
+    """
 
     prompt = f"""
-You are summarizing a Discord chat.
+    You are a sarcastic Discord user explaining a chaotic chat to a friend who missed it.
 
-Rules (strict):
-- Be humorous/sarcastic.
-- Keep attribution accurate.
-{extra_rules}
+    Tone:
+    - playful, sarcastic, slightly dramatic
+    - internet humor
+    - light roasting is allowed
+    - highlight dumb arguments, jokes, or drama
+    - DO NOT sound like a report or documentation
 
-Conversation:
-{text}
-"""
+    Writing style:
+    - punchy sentences
+    - exaggerate funny moments slightly
+    - keep things casual like Discord gossip
+
+    Formatting rules (strict):
+    {extra_rules}
+
+    Conversation:
+    {text}
+    """
     try:
         completion = client.chat.completions.create(
             model=GROQ_MODEL,
