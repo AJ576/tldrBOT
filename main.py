@@ -118,18 +118,12 @@ def summarize_chunk(chunk, compact: bool = False):
     extra_rules = """
 - Output ONLY 5 to 6 sections.
 - Each section must start with a short bold heading in Markdown with an emoji, like: **🔥 Some Heading**
-- Every heading must include an emoji.
 - After each heading, write 3 to 6 short sentences.
 - Bold every person's name when mentioned, like **Aditya** or **dabi**.
 - Leave one blank line between sections.
 - No bullets.
 - No intro line.
 - No conclusion line.
-- Keep it concise and readable.
-- Preserve speaker attribution exactly.
-- Do NOT assume the message author is the subject of a claim.
-- If a line says "A: @B wants ...", treat B as subject, A as reporter.
-- Do not rewrite accusations as facts; frame as "A said..." when uncertain.
 """
 
     prompt = f"""
