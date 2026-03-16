@@ -47,7 +47,7 @@ Chunked multi-part summary.
 
 ---
 
-### `/help`
+### `/tldr_help` (alias: `/help_tldr`)
 Shows command usage and examples.
 
 ## Setup

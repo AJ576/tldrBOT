@@ -243,8 +243,8 @@ async def tldr_full(
     await send_long_message(output, summary)
 
 
-@bot.command()
-async def help(ctx):
+@bot.command(name="tldr_help", aliases=["help_tldr"])
+async def tldr_help(ctx):
     text = (
         "**Discord TLDR Bot — Help**\n\n"
         "`/tldr [hours] [source_channel] [output_channel] [bots]`\n"
@@ -258,7 +258,7 @@ async def help(ctx):
         "`/tldr_full [hours] [source_channel] [output_channel] [bots]`\n"
         "- Chunked multi-part summary\n"
         "- Example: `/tldr_full 12 #general #tldr-output no`\n\n"
-        "Output never pings `@everyone`/roles/users."
+        "`/tldr_help` or `/help_tldr` to show this message."
     )
     await ctx.send(text, allowed_mentions=discord.AllowedMentions.none())
 
