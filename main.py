@@ -124,6 +124,7 @@ You are summarizing a Discord chat.
 Rules (strict):
 - Be humorous/sarcastic.
 - DO NOT start with scene-setting phrases like "Welcome to...", "In this...", "Here's...".
+- Bold every person's name when mentioned, like **Aditya** or **dabi**.
 - Start immediately with content.
 {extra_rules}
 
