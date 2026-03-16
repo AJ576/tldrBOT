@@ -36,9 +36,12 @@ async def get_messages(channel, hours=6, command_message_id=None, include_bots=F
             continue
         if command_message_id and msg.id == command_message_id:
             continue
-        content = msg.content.strip()
+
+        # Use clean_content so mentions are readable (e.g., @dabi)
+        content = (msg.clean_content or "").strip()
         if not content:
             continue
+
         messages.append(f"{msg.author.display_name}: {content}")
 
     return messages
@@ -112,9 +115,7 @@ def enforce_tldr_shape(text: str, max_sections: int = 5) -> str:
 def summarize_chunk(chunk, compact: bool = False):
     text = "\n".join(chunk)
 
-    extra_rules = ""
-    if compact:
-        extra_rules = """
+    extra_rules = """
 - Output ONLY 5 to 6 sections.
 - Each section must start with a short bold heading in Markdown with an emoji, like: **🔥 Some Heading**
 - Every heading must include an emoji.
@@ -125,6 +126,10 @@ def summarize_chunk(chunk, compact: bool = False):
 - No intro line.
 - No conclusion line.
 - Keep it concise and readable.
+- Preserve speaker attribution exactly.
+- Do NOT assume the message author is the subject of a claim.
+- If a line says "A: @B wants ...", treat B as subject, A as reporter.
+- Do not rewrite accusations as facts; frame as "A said..." when uncertain.
 """
 
     prompt = f"""
@@ -132,8 +137,7 @@ You are summarizing a Discord chat.
 
 Rules (strict):
 - Be humorous/sarcastic.
-- DO NOT start with scene-setting phrases like "Welcome to...", "In this...", "Here's...".
-- Start immediately with content.
+- Keep attribution accurate.
 {extra_rules}
 
 Conversation:
