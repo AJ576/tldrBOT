@@ -21,9 +21,10 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(
-    command_prefix="!",
+    command_prefix="/",   # changed from "!"
     intents=intents,
-    allowed_mentions=discord.AllowedMentions.none(),  # prevents @everyone/@here/user/role pings
+    allowed_mentions=discord.AllowedMentions.none(),
+    help_command=None,    # so your custom /help works cleanly
 )
 
 async def get_messages(channel, hours=6, command_message_id=None, include_bots=False):
@@ -176,7 +177,7 @@ async def send_long_message(target, text):
         )
 
 
-@commands.cooldown(1, 60, commands.BucketType.channel)
+@commands.cooldown(1, 30, commands.BucketType.channel)
 @bot.command()
 async def tldr(
     ctx,
@@ -209,7 +210,7 @@ async def tldr(
     await send_long_message(output, summary)
 
 
-@commands.cooldown(1, 60, commands.BucketType.channel)
+@commands.cooldown(1, 30, commands.BucketType.channel)
 @bot.command()
 async def tldr_full(
     ctx,
@@ -240,6 +241,26 @@ async def tldr_full(
     await output.send("Summarizing conversation in parts...", allowed_mentions=discord.AllowedMentions.none())
     summary = summarize_full(messages)
     await send_long_message(output, summary)
+
+
+@bot.command()
+async def help(ctx):
+    text = (
+        "**Discord TLDR Bot — Help**\n\n"
+        "`/tldr [hours] [source_channel] [output_channel] [bots]`\n"
+        "- Compact summary (default 6 hours)\n"
+        "- `bots`: include bot messages (default: no)\n\n"
+        "**Examples**\n"
+        "- `/tldr`\n"
+        "- `/tldr 24`\n"
+        "- `/tldr 6 #general`\n"
+        "- `/tldr 6 #general #tldr-output yes`\n\n"
+        "`/tldr_full [hours] [source_channel] [output_channel] [bots]`\n"
+        "- Chunked multi-part summary\n"
+        "- Example: `/tldr_full 12 #general #tldr-output no`\n\n"
+        "Output never pings `@everyone`/roles/users."
+    )
+    await ctx.send(text, allowed_mentions=discord.AllowedMentions.none())
 
 
 @bot.event

@@ -4,56 +4,51 @@ A Discord bot that summarizes channel conversations with a humorous tone using G
 
 ## Features
 
-- `!tldr` for a compact summary (default: last 6 hours)
-- `!tldr_full` for chunked/longer summaries
+- `/tldr` for a compact summary (default: last 6 hours)
+- `/tldr_full` for chunked/longer summaries
 - Optional source/output channels
-- Optional bot-message inclusion
+- Optional bot-message inclusion (`no` by default, use `yes` to include)
 - Mention-safe output (`@everyone`/role/user pings disabled)
+- Cooldown: `tldr` and `tldr_full` are limited to once every **30 seconds per channel**
+- `/help` has no cooldown
 
 ## Commands
 
-### `!tldr`
+### `/tldr`
 Compact summary.
 
-**Signature**
-`!tldr [hours] [source_channel] [output_channel] [bots]`
+**Signature**  
+`/tldr [hours] [source_channel] [output_channel] [bots]`
 
-- `hours` (optional, int): how far back to read (default: `6`)
-- `source_channel` (optional, channel mention): where to read messages from
-- `output_channel` (optional, channel mention): where to post summary
-- `bots` (optional, `yes`/`no`): include bot messages (`no` by default)
+- `hours` (optional, int): how far back to read (default: `6`, max accepted by code: `720`)
+- `source_channel` (optional): where to read messages from (default: current channel)
+- `output_channel` (optional): where to post summary (default: current channel)
+- `bots` (optional): `yes`/`no` (default: `no`)
 
 **Examples**
-- `!tldr`  
-  Read current channel (last 6h), post in current channel, exclude bot messages.
-- `!tldr 24`  
-  Same channel, last 24h.
-- `!tldr 6 #general`  
-  Read from `#general`, post in current channel.
-- `!tldr 6 #general #tldr-output`  
-  Read from `#general`, post in `#tldr-output`.
-- `!tldr 6 #general #tldr-output yes`  
-  Same as above, but include bot messages.
-- `!tldr 6 #general #tldr-output no`  
-  Explicitly exclude bot messages.
+- `/tldr`
+- `/tldr 24`
+- `/tldr 6 #general`
+- `/tldr 6 #general #tldr-output`
+- `/tldr 6 #general #tldr-output yes`
 
 ---
 
-### `!tldr_full`
-Longer, chunked summary.
+### `/tldr_full`
+Chunked multi-part summary.
 
-**Signature**
-`!tldr_full [hours] [source_channel] [output_channel] [bots]`
+**Signature**  
+`/tldr_full [hours] [source_channel] [output_channel] [bots]`
 
 **Examples**
-- `!tldr_full`
-- `!tldr_full 12`
-- `!tldr_full 12 #general`
-- `!tldr_full 12 #general #tldr-output`
-- `!tldr_full 12 #general #tldr-output yes`
+- `/tldr_full`
+- `/tldr_full 12`
+- `/tldr_full 12 #general #tldr-output no`
 
-> Note: If you provide channels, keep argument order exactly as shown:
-> `hours -> source_channel -> output_channel -> bots`
+---
+
+### `/help`
+Shows command usage and examples.
 
 ## Setup
 
