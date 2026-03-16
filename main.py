@@ -114,9 +114,10 @@ def summarize_chunk(chunk, compact: bool = False):
     extra_rules = ""
     if compact:
         extra_rules = """
-- Output ONLY 3 to 5 sections.
-- Each section must start with a short bold heading in Markdown, like: **🔥 Some Heading**
-- After each heading, write 2 to 4 short sentences.
+- Output ONLY 5 to 6 sections.
+- Each section must start with a short bold heading in Markdown with an emoji, like: **🔥 Some Heading**
+- Every heading must include an emoji.
+- After each heading, write 3 to 6 short sentences.
 - Bold every person's name when mentioned, like **Aditya** or **dabi**.
 - Leave one blank line between sections.
 - No bullets.
@@ -154,13 +155,14 @@ def summarize_full(messages):
     chunks = list(chunk_messages(messages))
     summaries = []
 
-    # Single chunk → just one summary
+    # Single chunk → styled summary
     if len(chunks) == 1:
-        return summarize_chunk(chunks[0])
+        return summarize_chunk(chunks[0], compact=True)
 
-    # Multiple chunks → part summaries
+    # Multiple chunks → styled part summaries
     for i, chunk in enumerate(chunks):
-        summaries.append(f"Part {i+1}:\n{summarize_chunk(chunk)}")
+        part_summary = summarize_chunk(chunk, compact=True)
+        summaries.append(f"**🧩 Part {i+1}**\n{part_summary}")
 
     merged_summaries = "\n\n".join(summaries)
     return merged_summaries

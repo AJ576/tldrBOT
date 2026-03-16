@@ -91,3 +91,7 @@ https://discord.com/oauth2/authorize?client_id=1482553762559299728&permissions=6
 - Never commit `.env`
 - Use GitHub Secrets for CI/CD (if using Actions)
 - Rotate leaked keys immediately
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
