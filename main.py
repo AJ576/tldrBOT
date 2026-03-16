@@ -26,7 +26,7 @@ bot = commands.Bot(
     allowed_mentions=discord.AllowedMentions.none(),  # prevents @everyone/@here/user/role pings
 )
 
-async def get_messages(channel, hours=6, command_message_id=None, include_bots=True):
+async def get_messages(channel, hours=6, command_message_id=None, include_bots=False):
     cutoff = datetime.utcnow() - timedelta(hours=hours)
     messages = []
 
@@ -174,7 +174,7 @@ async def tldr(
     hours: int = 6,
     source_channel: discord.TextChannel = None,
     output_channel: discord.TextChannel = None,
-    bots: str = "yes",
+    bots: str = "no",
 ):
     source = source_channel or ctx.channel
     output = output_channel or ctx.channel
@@ -183,7 +183,7 @@ async def tldr(
         await output.send("Maximum allowed range is 720 hours.")
         return
 
-    include_bots = bots.lower() not in {"no", "n", "false", "0"}
+    include_bots = bots.lower() in {"yes", "y", "true", "1"}
     messages = await get_messages(
         source,
         hours,
@@ -207,7 +207,7 @@ async def tldr_full(
     hours: int = 6,
     source_channel: discord.TextChannel = None,
     output_channel: discord.TextChannel = None,
-    bots: str = "yes",
+    bots: str = "no",
 ):
     source = source_channel or ctx.channel
     output = output_channel or ctx.channel
@@ -216,7 +216,7 @@ async def tldr_full(
         await output.send("Maximum allowed range is 720 hours.")
         return
 
-    include_bots = bots.lower() not in {"no", "n", "false", "0"}
+    include_bots = bots.lower() in {"yes", "y", "true", "1"}
     messages = await get_messages(
         source,
         hours,
