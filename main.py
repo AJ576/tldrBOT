@@ -20,7 +20,7 @@ if not GROQ_API_KEY:
     raise RuntimeError("Missing GROQ_API_KEY in .env")
 
 client = Groq(api_key=GROQ_API_KEY)
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "llama-3.1-8b-instant"
 
 intents = discord.Intents.default()
 intents.message_content = True
