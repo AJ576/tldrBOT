@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 import time
 from groq import Groq
 from config import Config
@@ -11,41 +12,42 @@ log = logging.getLogger(__name__)
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2  # seconds
 STAGGER_DELAY = 1.5   # seconds between parallel launches
+MAX_BACKOFF_SECONDS = 20
 
 PERSONALITY = """\
-You are a long-time member of this Discord server. You've seen it all. You talk like \
-you're IN the group — roasting people, hyping moments, picking sides in arguments, \
-and reacting like a friend who was there the whole time. You have opinions. You take \
-sides. You're dramatic about dumb things and dismissive about serious things. \
-Think of yourself as the server's chaotic narrator — part gossip columnist, part \
-hype man, part disappointed parent."""
+You are a regular member of this Discord server writing a quick recap.
+You mildly roast some users depending on their activites.
+Keep it conversational, funny, and meme-aware, but prioritize factual accuracy over style.
+Use playful phrasing and occasional witty punchlines."""
 
-FORMAT_RULES = """\
-- 200 to 400 words. MUST stay under 2000 characters total.
-- 4 to 6 sections max.
-- Each section: a short bold heading with an emoji, like: **🔥 The Beef Was Real**
-- After each heading, write 2 to 4 punchy sentences. Short. Conversational. Not formal.
-- **Bold every person's name** when mentioned, like **Aditya** or **dabi**.
-- One blank line between sections.
-- No bullets. No intro line. No conclusion line. No "in conclusion" energy.
-- Use Discord vibes: say things like "ngl", "bro", "respectfully", "lowkey", "deadass".
-- Throw in reactions like you were watching it happen: "I can't with this man 💀"
-- If someone did something embarrassing, call it out. If something was wholesome, gas it up.
-- Roast where appropriate. Hype where earned. Be specific — don't be generic."""
-
-MERGE_RULES = """\
-- Combine the partial summaries into ONE cohesive summary.
-- 200 to 400 words. MUST stay under 2000 characters total.
-- 4 to 6 sections total (not per part).
-- Each section: a short bold heading with an emoji, like: **🔥 Some Heading**
-- After each heading, write 2 to 4 punchy sentences.
+FORMAT_RULES = f"""\
+- Keep total output under {Config.summary_target_max_chars} characters.
+- Each section starts with a short bold heading with an emoji, like: **🔥 The Debate**
+- After each heading, write 4 to 6 concise sentences.
 - **Bold every person's name** when mentioned.
 - One blank line between sections.
 - No bullets. No intro line. No conclusion line.
-- Merge overlapping topics. Don't repeat the same event twice.
-- Keep the same chaotic narrator energy — you were there for all of it."""
+- Keep humor light (small jokes/phrases), never at the expense of factual accuracy.
+- Only include claims grounded in the provided conversation.
+- Do not invent events, names, or opinions not present in the input."""
+
+MERGE_RULES = f"""\
+- Combine partial summaries into ONE cohesive summary.
+- Keep total output under {Config.summary_target_max_chars} characters.
+- 4 to 6 sections total.
+- Each section starts with a short bold heading with an emoji.
+- After each heading, write 4 to 6 concise sentences.
+- **Bold every person's name** when mentioned.
+- One blank line between sections.
+- Keep humor light and consistent across sections.
+- Merge overlaps and remove repetition.
+- Only keep facts supported by the partial summaries."""
 
 _client = Groq(api_key=Config.groq_api_key)
+
+
+def _is_error_summary(text: str) -> bool:
+    return text.startswith("[") and text.endswith("]")
 
 
 def _call_groq(prompt: str) -> str:
@@ -59,10 +61,12 @@ def _call_groq(prompt: str) -> str:
             )
             return completion.choices[0].message.content or ""
         except Exception as e:
-            is_rate_limit = "429" in str(e) or "rate" in str(e).lower()
-            if is_rate_limit and attempt < MAX_RETRIES - 1:
-                delay = RETRY_BASE_DELAY * (2 ** attempt)
-                log.warning("Rate limited, retrying in %ss (attempt %d/%d)", delay, attempt + 1, MAX_RETRIES)
+            msg = str(e).lower()
+            is_transient = any(k in msg for k in ("429", "rate", "timeout", "503", "connection"))
+            if is_transient and attempt < MAX_RETRIES - 1:
+                base = RETRY_BASE_DELAY * (2 ** attempt)
+                delay = min(MAX_BACKOFF_SECONDS, base + random.uniform(0, 0.75))
+                log.warning("Groq transient error; retrying in %.2fs (attempt %d/%d)", delay, attempt + 1, MAX_RETRIES)
                 time.sleep(delay)
                 continue
             log.exception("Groq API request failed")
@@ -104,7 +108,7 @@ Partial summaries:
 def summarize_chunk(chunk: list[str], compact: bool = False) -> str:
     prompt = _build_chunk_prompt("\n".join(chunk))
     raw = _call_groq(prompt)
-    if raw.startswith("["):
+    if _is_error_summary(raw):
         return raw
     cleaned = sanitize_summary(raw)
     return enforce_tldr_shape(cleaned) if compact else cleaned
@@ -112,42 +116,47 @@ def summarize_chunk(chunk: list[str], compact: bool = False) -> str:
 
 async def summarize_parallel(messages: list[str]) -> str:
     """Fan-out: summarize each chunk with staggered starts, then merge into one summary."""
-    chunks = list(chunk_messages(messages))
+    if not messages:
+        return "[No messages to summarize]"
+
+    # For smaller windows, skip lossy merge and summarize once.
+    if len(messages) <= Config.single_pass_max_messages:
+        return summarize_chunk(messages, compact=True)
+
+    chunks = list(chunk_messages(messages, chunk_size=Config.chunk_size))
+    if not chunks:
+        return "[No messages to summarize]"
 
     if len(chunks) == 1:
         return summarize_chunk(chunks[0], compact=True)
 
-    # Staggered fan-out — delay between launches to avoid rate limits
-    loop = asyncio.get_running_loop()
     tasks = []
     for i, chunk in enumerate(chunks):
         if i > 0:
             await asyncio.sleep(STAGGER_DELAY)
-        tasks.append(loop.run_in_executor(None, summarize_chunk, chunk, True))
+        tasks.append(asyncio.to_thread(summarize_chunk, chunk, True))
 
     partial_summaries = await asyncio.gather(*tasks)
 
-    # Filter out failures
-    valid = [s for s in partial_summaries if not s.startswith("[")]
+    valid = [s.strip() for s in partial_summaries if s and not _is_error_summary(s)]
     if not valid:
-        return "[All summarization agents failed]"
+        return "[All summarization calls failed]"
 
-    # Single chunk survived — return it directly
     if len(valid) == 1:
         return valid[0]
 
-    # Merge — one final call to combine all partial summaries
     merge_prompt = _build_merge_prompt(valid)
-    raw = _call_groq(merge_prompt)
-    if raw.startswith("["):
+    raw = await asyncio.to_thread(_call_groq, merge_prompt)
+    if _is_error_summary(raw):
         return raw
+
     cleaned = sanitize_summary(raw)
     return enforce_tldr_shape(cleaned)
 
 
 def summarize_full(messages: list[str]) -> str:
     """Sync wrapper — returns multi-part summaries (no merge)."""
-    chunks = list(chunk_messages(messages))
+    chunks = list(chunk_messages(messages, chunk_size=Config.chunk_size))
 
     if len(chunks) == 1:
         return summarize_chunk(chunks[0], compact=True)

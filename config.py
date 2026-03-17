@@ -11,8 +11,8 @@ class Config:
     groq_api_key = os.getenv("GROQ_API_KEY")
 
     # Model
-    groq_model = "llama-3.3-70b-versatile"
-    temperature = 0.7
+    groq_model = "llama-3.1-8b-instant"
+    temperature = 0.5
     top_p = 0.9
 
     # Bot
@@ -22,6 +22,8 @@ class Config:
 
     # Summarizer
     chunk_size = 200
-    max_sections = 5
-    max_body_sentences = 4
+    max_sections = 8
+    max_body_sentences = 999  # Don't slice; let char limit handle it
     discord_char_limit = 2000
+    summary_target_max_chars = 5000
+    single_pass_max_messages = 300

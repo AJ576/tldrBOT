@@ -41,17 +41,46 @@ def enforce_tldr_shape(text: str, max_sections: int = Config.max_sections) -> st
         if not re.match(r"^\*\*.*\*\*$", heading):
             heading = f"**{heading.strip(':')}**"
 
-        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", body) if s.strip()]
-        body = " ".join(sentences[:Config.max_body_sentences]).strip()
-
-        cleaned.append(f"{heading}\n{body}" if body else heading)
+        # Keep body as-is; don't slice sentences.
+        # Let Discord char limit handle overflow instead.
+        if body:
+            cleaned.append(f"{heading}\n{body}")
+        else:
+            cleaned.append(heading)
 
     return "\n\n".join(cleaned).strip()
 
 
 async def send_long_message(target, text):
-    for i in range(0, len(text), Config.discord_char_limit):
+    """Send long text in Discord-safe chunks, respecting section breaks."""
+    text = (text or "").strip()
+    if not text:
+        return
+
+    limit = Config.discord_char_limit
+    while len(text) > limit:
+        # Try to break at section (double newline)
+        cut = text.rfind("\n\n", 0, limit)
+        if cut == -1:
+            # Fall back to single newline
+            cut = text.rfind("\n", 0, limit)
+        if cut == -1:
+            # Last resort: break at space
+            cut = text.rfind(" ", 0, limit)
+        if cut == -1:
+            # Absolute fallback: hard break
+            cut = limit
+
+        chunk = text[:cut].rstrip()
+        if chunk:
+            await target.send(
+                chunk,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        text = text[cut:].lstrip()
+
+    if text:
         await target.send(
-            text[i:i + Config.discord_char_limit],
+            text,
             allowed_mentions=discord.AllowedMentions.none(),
         )
