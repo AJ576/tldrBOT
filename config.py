@@ -12,7 +12,7 @@ class Config:
 
     # Model
     groq_model = "llama-3.1-8b-instant"
-    temperature = 0.25
+    temperature = 0.5
     top_p = 0.9
 
     # Bot
