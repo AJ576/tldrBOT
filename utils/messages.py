@@ -5,7 +5,11 @@ async def get_messages(channel, hours=6, command_message_id=None, include_bots=F
     cutoff = datetime.utcnow() - timedelta(hours=hours)
     messages = []
 
-    async for msg in channel.history(limit=2000, after=cutoff):
+    async for msg in channel.history(
+        limit=None,
+        after=cutoff,
+        oldest_first=True,  # important: timeline order
+    ):
         if (not include_bots) and msg.author.bot:
             continue
         if command_message_id and msg.id == command_message_id:

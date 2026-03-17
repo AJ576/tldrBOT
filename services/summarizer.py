@@ -16,24 +16,27 @@ MAX_BACKOFF_SECONDS = 20
 
 PERSONALITY = """\
 You are a regular member of this Discord server writing a quick recap.
-You mildly roast some users depending on their activites.
-Keep it conversational, funny, and meme-aware, but prioritize factual accuracy over style.
-Use playful phrasing and occasional witty punchlines."""
+Keep it conversational and lightly funny, but factual accuracy is the top priority.
+Never invent events, names, claims, motives, or outcomes."""
 
 FORMAT_RULES = f"""\
 - Keep total output under {Config.summary_target_max_chars} characters.
+- Preserve event order exactly as it appears in the conversation.
+- Do NOT regroup by theme if it breaks chronology.
 - Each section starts with a short bold heading with an emoji, like: **🔥 The Debate**
 - After each heading, write 4 to 6 concise sentences.
 - **Bold every person's name** when mentioned.
 - One blank line between sections.
 - No bullets. No intro line. No conclusion line.
-- Keep humor light (small jokes/phrases), never at the expense of factual accuracy.
-- Only include claims grounded in the provided conversation.
-- Do not invent events, names, or opinions not present in the input."""
+- Keep humor light and occasional.
+- If a detail is uncertain, omit it.
+- Only include claims grounded in the provided conversation."""
 
 MERGE_RULES = f"""\
 - Combine partial summaries into ONE cohesive summary.
 - Keep total output under {Config.summary_target_max_chars} characters.
+- Preserve chronological order across parts: Part 1 -> Part 2 -> Part 3 ...
+- Do NOT reorder events for thematic grouping.
 - 4 to 6 sections total.
 - Each section starts with a short bold heading with an emoji.
 - After each heading, write 4 to 6 concise sentences.
@@ -41,7 +44,10 @@ MERGE_RULES = f"""\
 - One blank line between sections.
 - Keep humor light and consistent across sections.
 - Merge overlaps and remove repetition.
+- If any claim is uncertain, remove it.
 - Only keep facts supported by the partial summaries."""
+
+MAX_FACTCHECK_EVIDENCE_CHARS = 12000
 
 _client = Groq(api_key=Config.groq_api_key)
 
@@ -114,6 +120,35 @@ def summarize_chunk(chunk: list[str], compact: bool = False) -> str:
     return enforce_tldr_shape(cleaned) if compact else cleaned
 
 
+def _build_factcheck_prompt(summary: str, messages: list[str]) -> str:
+    evidence = "\n".join(messages)
+    if len(evidence) > MAX_FACTCHECK_EVIDENCE_CHARS:
+        evidence = evidence[-MAX_FACTCHECK_EVIDENCE_CHARS:]  # keep latest context
+
+    return f"""\
+You are a strict fact-check editor.
+
+Task:
+Rewrite the summary so every claim is supported by the evidence chat log.
+If a claim is not clearly supported, delete or soften it.
+Do not add new facts.
+Keep the same overall structure and tone.
+
+Evidence chat log:
+{evidence}
+
+Draft summary:
+{summary}
+"""
+
+
+def _fact_check_summary(summary: str, messages: list[str]) -> str:
+    raw = _call_groq(_build_factcheck_prompt(summary, messages))
+    if _is_error_summary(raw):
+        return summary
+    return raw.strip() or summary
+
+
 async def summarize_parallel(messages: list[str]) -> str:
     """Fan-out: summarize each chunk with staggered starts, then merge into one summary."""
     if not messages:
@@ -121,7 +156,9 @@ async def summarize_parallel(messages: list[str]) -> str:
 
     # For smaller windows, skip lossy merge and summarize once.
     if len(messages) <= Config.single_pass_max_messages:
-        return summarize_chunk(messages, compact=True)
+        first = summarize_chunk(messages, compact=True)
+        checked = await asyncio.to_thread(_fact_check_summary, first, messages)
+        return enforce_tldr_shape(sanitize_summary(checked))
 
     chunks = list(chunk_messages(messages, chunk_size=Config.chunk_size))
     if not chunks:
@@ -151,7 +188,9 @@ async def summarize_parallel(messages: list[str]) -> str:
         return raw
 
     cleaned = sanitize_summary(raw)
-    return enforce_tldr_shape(cleaned)
+    shaped = enforce_tldr_shape(cleaned)
+    checked = await asyncio.to_thread(_fact_check_summary, shaped, messages)
+    return enforce_tldr_shape(sanitize_summary(checked))
 
 
 def summarize_full(messages: list[str]) -> str:
@@ -164,6 +203,7 @@ def summarize_full(messages: list[str]) -> str:
     parts = []
     for i, chunk in enumerate(chunks):
         summary = summarize_chunk(chunk, compact=True)
-        parts.append(f"**🧩 Part {i + 1}**\n{summary}")
+        checked = _fact_check_summary(summary, chunk)
+        parts.append(f"**🧩 Part {i + 1}**\n{enforce_tldr_shape(sanitize_summary(checked))}")
 
     return "\n\n".join(parts)
