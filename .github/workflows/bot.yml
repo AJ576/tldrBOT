@@ -32,6 +32,5 @@ jobs:
       - name: Run bot
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
-          GROQ_API_KEY: ${{secrets.GROQ_API_KEY}}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: python main.py
