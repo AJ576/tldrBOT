@@ -11,8 +11,8 @@ class Config:
     openai_api_key = os.getenv("OPENAI_API_KEY")
 
     # Model
-    openai_model = "gpt-4.1-mini"
-    temperature = 0.7
+    openai_model = "gpt-5-mini"
+    temperature = 0.25
     top_p = 0.9
 
     # Bot
@@ -22,7 +22,7 @@ class Config:
 
     # Summarizer
     chunk_size = 200
-    max_sections = 8
+    max_sections = 12
     max_body_sentences = 999  # Don't slice; let char limit handle it
     discord_char_limit = 2000
     summary_target_max_chars = 5000
