@@ -11,7 +11,7 @@ class Config:
     groq_api_key = os.getenv("GROQ_API_KEY")
 
     # Model
-    groq_model = "llama-3.3-70b-versatile"
+    groq_model = "llama-3.1-8b-instant"
     temperature = 0.25
     top_p = 0.9
 
