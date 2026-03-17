@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 import time
-from openai import OpenAI
+from openai import OpenAI, BadRequestError
 from config import Config
 from utils.formatting import sanitize_summary, enforce_tldr_shape
 from utils.messages import chunk_messages
@@ -55,13 +55,26 @@ def _is_error_summary(text: str) -> bool:
 def _call_groq(prompt: str) -> str:
     for attempt in range(MAX_RETRIES):
         try:
-            completion = _client.chat.completions.create(
-                model=Config.openai_model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=Config.temperature,
-                top_p=Config.top_p,
-            )
+            req = {
+                "model": Config.openai_model,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+
+            # gpt-5-* chat endpoint rejects non-default temperature/top_p
+            if not Config.openai_model.startswith("gpt-5"):
+                req["temperature"] = Config.temperature
+                req["top_p"] = Config.top_p
+
+            completion = _client.chat.completions.create(**req)
             return completion.choices[0].message.content or ""
+
+        except BadRequestError as e:
+            log.exception("OpenAI request invalid")
+            msg = str(e).lower()
+            if "temperature" in msg or "top_p" in msg:
+                return "[OpenAI config error: model does not support this temperature/top_p setting]"
+            return "[OpenAI request invalid: check model name and API parameters]"
+
         except Exception as e:
             msg = str(e).lower()
             is_transient = any(k in msg for k in ("429", "rate", "timeout", "503", "connection"))
@@ -108,8 +121,10 @@ Partial summaries:
 
 
 def summarize_chunk(chunk: list[str], compact: bool = False) -> str:
+    print(f"[ai] sending chunk messages={len(chunk)} compact={compact}")
     prompt = _build_chunk_prompt("\n".join(chunk))
     raw = _call_groq(prompt)
+    print(f"[ai] received chunk chars={len(raw or '')}")
     if _is_error_summary(raw):
         return raw
     cleaned = sanitize_summary(raw)
@@ -146,6 +161,7 @@ def _fact_check_summary(summary: str, messages: list[str]) -> str:
 
 
 async def summarize_parallel(messages: list[str]) -> str:
+    print(f"[ai] summarize_parallel start total_messages={len(messages)}")
     """Fan-out: summarize each chunk with staggered starts, then merge into one summary."""
     if not messages:
         return "[No messages to summarize]"
@@ -179,7 +195,10 @@ async def summarize_parallel(messages: list[str]) -> str:
         return valid[0]
 
     merge_prompt = _build_merge_prompt(valid)
+    print(f"[ai] merge send partials={len(valid)}")
     raw = await asyncio.to_thread(_call_groq, merge_prompt)
+    print(f"[ai] merge received chars={len(raw or '')}")
+    print("[ai] ready for next")
     if _is_error_summary(raw):
         return raw
 

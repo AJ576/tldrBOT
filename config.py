@@ -18,7 +18,7 @@ class Config:
     # Bot
     command_prefix = "/"
     cooldown_seconds = 30
-    max_hours = 720
+    max_hours = 24
 
     # Summarizer
     chunk_size = 200

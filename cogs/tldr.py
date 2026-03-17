@@ -16,7 +16,9 @@ class TldrCog(commands.Cog):
         output = output_channel or ctx.channel
 
         if hours > Config.max_hours:
-            await output.send(f"Maximum allowed range is {Config.max_hours} hours.")
+            await output.send(
+                f"Max lookback is **{Config.max_hours} hours**. Try `/tldr {Config.max_hours}` or less."
+            )
             return
 
         include_bots = bots.lower() in {"yes", "y", "true", "1"}
