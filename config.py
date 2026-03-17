@@ -8,11 +8,11 @@ load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 class Config:
     # Tokens
     discord_token = os.getenv("DISCORD_TOKEN")
-    groq_api_key = os.getenv("GROQ_API_KEY")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
 
     # Model
-    groq_model = "llama-3.1-8b-instant"
-    temperature = 0.5
+    openai_model = "gpt-4.1-mini"
+    temperature = 0.7
     top_p = 0.9
 
     # Bot

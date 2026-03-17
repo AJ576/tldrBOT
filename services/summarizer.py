@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 import time
-from groq import Groq
+from openai import OpenAI
 from config import Config
 from utils.formatting import sanitize_summary, enforce_tldr_shape
 from utils.messages import chunk_messages
@@ -15,9 +15,9 @@ STAGGER_DELAY = 1.5   # seconds between parallel launches
 MAX_BACKOFF_SECONDS = 20
 
 PERSONALITY = """\
-You’re an active member of this Discord server posting a recap.
-Sound human, casual, and a little unhinged (in a fun way).
-Be funny, meme-aware, and expressive — but don’t make up facts."""
+You're an active member of this Discord server posting a recap.
+Sound human, casual, and unhinged. Be FUNNY. Make jokes, use sarcasm, roast people lightly, reference memes.
+Be expressive and entertaining — but don't make up facts. Humor > formality, but accuracy > humor."""
 
 FORMAT_RULES = f"""\
 - Keep it under {Config.summary_target_max_chars} characters.
@@ -28,6 +28,8 @@ FORMAT_RULES = f"""\
 - Bold usernames like **name** when mentioned.
 - One blank line between sections.
 - No bullet points.
+- Crack jokes. Use sarcasm. Be witty.
+- Slightly Roast or Glaze users from time to time as if you know them
 - No fake details. If unsure, skip it."""
 
 MERGE_RULES = f"""\
@@ -37,13 +39,13 @@ MERGE_RULES = f"""\
 - 4 to 6 sections total.
 - Bold heading + emoji for each section.
 - 3 to 6 sentences per section.
-- Keep the tone playful and funny.
+- Keep the tone FUNNY and playful. Make it entertaining.
 - Remove repetition.
-- Don’t invent details."""
+- Don't invent details."""
 
 MAX_FACTCHECK_EVIDENCE_CHARS = 12000
 
-_client = Groq(api_key=Config.groq_api_key)
+_client = OpenAI(api_key=Config.openai_api_key)
 
 
 def _is_error_summary(text: str) -> bool:
@@ -54,7 +56,7 @@ def _call_groq(prompt: str) -> str:
     for attempt in range(MAX_RETRIES):
         try:
             completion = _client.chat.completions.create(
-                model=Config.groq_model,
+                model=Config.openai_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=Config.temperature,
                 top_p=Config.top_p,
@@ -66,12 +68,12 @@ def _call_groq(prompt: str) -> str:
             if is_transient and attempt < MAX_RETRIES - 1:
                 base = RETRY_BASE_DELAY * (2 ** attempt)
                 delay = min(MAX_BACKOFF_SECONDS, base + random.uniform(0, 0.75))
-                log.warning("Groq transient error; retrying in %.2fs (attempt %d/%d)", delay, attempt + 1, MAX_RETRIES)
+                log.warning("OpenAI transient error; retrying in %.2fs (attempt %d/%d)", delay, attempt + 1, MAX_RETRIES)
                 time.sleep(delay)
                 continue
-            log.exception("Groq API request failed")
-            return "[Groq API request failed]"
-    return "[Groq API request failed]"
+            log.exception("OpenAI API request failed")
+            return "[OpenAI API request failed]"
+    return "[OpenAI API request failed]"
 
 
 def _build_chunk_prompt(text: str) -> str:
