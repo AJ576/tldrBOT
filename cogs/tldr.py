@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 import traceback
 import discord
 from discord import app_commands
@@ -56,6 +57,42 @@ class TldrCog(commands.Cog):
         await send_long_message(output, summary)
         await self._reply(interaction, f"Done. Posted in {output.mention}.", ephemeral=True)
 
+    async def _fetch_user_messages(self, channel, username: str, hours: int, include_bots: bool = False):
+        """Fetch only messages from a specific user."""
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+        print(
+            f"[collector] user start channel={getattr(channel, 'id', 'unknown')} "
+            f"username={username} hours={hours} cutoff={cutoff.isoformat()}"
+        )
+
+        messages = []
+        idx = 1
+
+        async for msg in channel.history(
+            limit=None,
+            after=cutoff,
+            oldest_first=True,
+        ):
+            if (not include_bots) and msg.author.bot:
+                continue
+
+            if msg.author.name.lower() != username.lower() and msg.author.display_name.lower() != username.lower():
+                continue
+
+            content = (msg.clean_content or "").strip()
+            if not content:
+                continue
+
+            messages.append(f"{idx}. {msg.author.display_name}: {content}")
+            idx += 1
+
+        print(
+            f"[collector] user done channel={getattr(channel, 'id', 'unknown')} "
+            f"username={username} messages_collected={len(messages)}"
+        )
+        return messages
+
     @app_commands.command(name="tldr", description="Compact summary (default 6 hours)")
     @app_commands.describe(
         hours="How many hours back to summarize (max 24)",
@@ -106,7 +143,10 @@ class TldrCog(commands.Cog):
             "- `/tldr 6 #general #tldr-output true`\n\n"
             "`/tldr_full [hours] [source_channel] [output_channel] [bots]`\n"
             "- Chunked multi-part summary\n"
-            "- Example: `/tldr_full 12 #general #tldr-output false`\n"
+            "- Example: `/tldr_full 12 #general #tldr-output false`\n\n"
+            "`/tldr_user <username> [hours] [source_channel]`\n"
+            "- Roast a user based on their messages (default 24 hours)\n"
+            "- Example: `/tldr_user john 24`\n"
         )
         await self._reply(interaction, text, ephemeral=True)
 
@@ -126,6 +166,80 @@ class TldrCog(commands.Cog):
             await self._reply(interaction, "cooldown", ephemeral=True)
             return
         print("----- APP COMMAND ERROR (tldr_full) -----")
+        traceback.print_exception(type(error), error, error.__traceback__)
+        print("------------------------------------------")
+        await self._reply(interaction, "Command failed. Check logs.", ephemeral=True)
+
+    @app_commands.command(name="tldr_user", description="Roast a user based on their messages")
+    @app_commands.describe(
+        username="Username to roast",
+        hours="How many hours back (default 24)",
+        source_channel="Channel to read from (default current)",
+    )
+    @app_commands.checks.cooldown(1, Config.cooldown_seconds, key=lambda i: (i.guild_id, i.channel_id))
+    async def tldr_user(
+        self,
+        interaction: discord.Interaction,
+        username: str,
+        hours: app_commands.Range[int, 1, 24] = 24,
+        source_channel: discord.TextChannel | None = None,
+    ):
+        source = source_channel or interaction.channel
+
+        if not isinstance(source, discord.TextChannel):
+            await self._reply(interaction, "This command only supports text channels.", ephemeral=True)
+            return
+
+        if not interaction.response.is_done():
+            await interaction.response.defer(thinking=True)
+
+        messages = await self._fetch_user_messages(source, username, hours, include_bots=False)
+
+        if not messages:
+            await self._reply(
+                interaction,
+                f"No messages from **{username}** in the last {hours} hour(s).",
+                ephemeral=True,
+            )
+            return
+
+        print(f"[ai] tldr_user roast start username={username} message_count={len(messages)}")
+        roast = await self._generate_user_roast(username, messages)
+        print(f"[ai] tldr_user roast done chars={len(roast or '')}")
+
+        await self._reply(interaction, roast, ephemeral=False)
+
+    async def _generate_user_roast(self, username: str, messages: list[str]) -> str:
+        """Generate a roast based ONLY on user's actual messages."""
+        from services.summarizer import _call_groq
+
+        prompt = f"""\
+You are a Discord server member writing a funny roast about **{username}** based on their recent messages.
+
+RULES (STRICT):
+- ONLY use facts directly from their messages below.
+- NEVER invent hobbies, relationships, locations, or behaviors.
+- NEVER reference events that aren't in their messages.
+- Make it playful and funny, NOT mean or offensive.
+- Keep it 2-4 sentences max.
+- Bold the username: **{username}**
+
+Their recent messages:
+{chr(10).join(messages)}
+
+Write the roast now:"""
+
+        raw = _call_groq(prompt)
+        if raw.startswith("[") and raw.endswith("]"):
+            return f"Couldn't roast **{username}** right now. Try again later."
+        return raw.strip() or f"**{username}** is too mysterious to roast."
+
+    @tldr_user.error
+    async def tldr_user_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            await self._reply(interaction, "cooldown", ephemeral=True)
+            return
+        print("----- APP COMMAND ERROR (tldr_user) -----")
         traceback.print_exception(type(error), error, error.__traceback__)
         print("------------------------------------------")
         await self._reply(interaction, "Command failed. Check logs.", ephemeral=True)
