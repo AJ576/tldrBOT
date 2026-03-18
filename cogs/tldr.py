@@ -57,13 +57,13 @@ class TldrCog(commands.Cog):
         await send_long_message(output, summary)
         await self._reply(interaction, f"Done. Posted in {output.mention}.", ephemeral=True)
 
-    async def _fetch_user_messages(self, channel, username: str, hours: int, include_bots: bool = False):
-        """Fetch only messages from a specific user."""
+    async def _fetch_user_messages(self, channel, user_id: int, hours: int, include_bots: bool = False):
+        """Fetch only messages from a specific user by ID."""
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
 
         print(
             f"[collector] user start channel={getattr(channel, 'id', 'unknown')} "
-            f"username={username} hours={hours} cutoff={cutoff.isoformat()}"
+            f"user_id={user_id} hours={hours} cutoff={cutoff.isoformat()}"
         )
 
         messages = []
@@ -74,10 +74,7 @@ class TldrCog(commands.Cog):
             after=cutoff,
             oldest_first=True,
         ):
-            if (not include_bots) and msg.author.bot:
-                continue
-
-            if msg.author.name.lower() != username.lower() and msg.author.display_name.lower() != username.lower():
+            if msg.author.id != user_id:
                 continue
 
             content = (msg.clean_content or "").strip()
@@ -89,7 +86,7 @@ class TldrCog(commands.Cog):
 
         print(
             f"[collector] user done channel={getattr(channel, 'id', 'unknown')} "
-            f"username={username} messages_collected={len(messages)}"
+            f"user_id={user_id} messages_collected={len(messages)}"
         )
         return messages
 
@@ -172,7 +169,7 @@ class TldrCog(commands.Cog):
 
     @app_commands.command(name="tldr_user", description="Roast a user based on their messages")
     @app_commands.describe(
-        username="Username to roast",
+        user="User to roast",
         hours="How many hours back (default 24)",
         source_channel="Channel to read from (default current)",
     )
@@ -180,7 +177,7 @@ class TldrCog(commands.Cog):
     async def tldr_user(
         self,
         interaction: discord.Interaction,
-        username: str,
+        user: discord.User,
         hours: app_commands.Range[int, 1, 24] = 24,
         source_channel: discord.TextChannel | None = None,
     ):
@@ -193,18 +190,18 @@ class TldrCog(commands.Cog):
         if not interaction.response.is_done():
             await interaction.response.defer(thinking=True)
 
-        messages = await self._fetch_user_messages(source, username, hours, include_bots=False)
+        messages = await self._fetch_user_messages(source, user.id, hours, include_bots=False)
 
         if not messages:
             await self._reply(
                 interaction,
-                f"No messages from **{username}** in the last {hours} hour(s).",
+                f"No messages from **{user.display_name}** in the last {hours} hour(s).",
                 ephemeral=True,
             )
             return
 
-        print(f"[ai] tldr_user roast start username={username} message_count={len(messages)}")
-        roast = await self._generate_user_roast(username, messages)
+        print(f"[ai] tldr_user roast start user={user.display_name} ({user.id}) message_count={len(messages)}")
+        roast = await self._generate_user_roast(user.display_name, messages)
         print(f"[ai] tldr_user roast done chars={len(roast or '')}")
 
         await self._reply(interaction, roast, ephemeral=False)
