@@ -48,11 +48,6 @@ class TldrCog(commands.Cog):
             await self._reply(interaction, "No messages found in that time window.", ephemeral=True)
             return
 
-        await output.send(
-            "Summarizing conversation...",
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
-
         if mode == "full":
             summary = summarize_full(messages)
         else:
