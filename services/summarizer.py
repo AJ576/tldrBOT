@@ -16,8 +16,8 @@ MAX_BACKOFF_SECONDS = 20
 
 PERSONALITY = """\
 You're an active member of this Discord server posting a recap.
-Sound casual and funny, but stay grounded in the actual chat.
-Use light jokes/sarcasm, but NEVER invent facts, motives, outcomes, or relationships."""
+Sound casual, clear, and mildly funny.
+Use light jokes/sarcasm occasionally, but NEVER invent facts, motives, outcomes, or relationships."""
 
 FORMAT_RULES = f"""\
 - Keep it under {Config.summary_target_max_chars} characters.
@@ -28,7 +28,8 @@ FORMAT_RULES = f"""\
 - Bold usernames like **name** when mentioned.
 - One blank line between sections.
 - No bullet points.
-- Humor is allowed, but factual accuracy is mandatory.
+- Add mild humor and tiny jokes naturally (no forced comedy).
+- Factual accuracy is mandatory.
 - If unsure about a detail, omit it."""
 
 MERGE_RULES = f"""\
@@ -39,7 +40,7 @@ MERGE_RULES = f"""\
 - 4 to 6 sections total.
 - Bold heading + emoji for each section.
 - 3 to 6 sentences per section.
-- Keep tone playful, but do not add unsupported claims.
+- Keep tone playful with mild humor.
 - Remove repetition.
 - If uncertain, omit."""
 
@@ -169,8 +170,9 @@ async def summarize_parallel(messages: list[str]) -> str:
     # For smaller windows, skip lossy merge and summarize once.
     if len(messages) <= Config.single_pass_max_messages:
         first = summarize_chunk(messages, compact=True)
-        checked = await asyncio.to_thread(_fact_check_summary, first, messages)
-        return enforce_tldr_shape(sanitize_summary(checked))
+        # checked = await asyncio.to_thread(_fact_check_summary, first, messages)
+        # return enforce_tldr_shape(sanitize_summary(checked))
+        return enforce_tldr_shape(sanitize_summary(first))
 
     chunks = list(chunk_messages(messages, chunk_size=Config.chunk_size))
     if not chunks:
@@ -204,8 +206,9 @@ async def summarize_parallel(messages: list[str]) -> str:
 
     cleaned = sanitize_summary(raw)
     shaped = enforce_tldr_shape(cleaned)
-    checked = await asyncio.to_thread(_fact_check_summary, shaped, messages)
-    return enforce_tldr_shape(sanitize_summary(checked))
+    # checked = await asyncio.to_thread(_fact_check_summary, shaped, messages)
+    # return enforce_tldr_shape(sanitize_summary(checked))
+    return shaped
 
 
 def summarize_full(messages: list[str]) -> str:
@@ -218,7 +221,8 @@ def summarize_full(messages: list[str]) -> str:
     parts = []
     for i, chunk in enumerate(chunks):
         summary = summarize_chunk(chunk, compact=True)
-        checked = _fact_check_summary(summary, chunk)
-        parts.append(f"**🧩 Part {i + 1}**\n{enforce_tldr_shape(sanitize_summary(checked))}")
+        # checked = _fact_check_summary(summary, chunk)
+        # parts.append(f"**🧩 Part {i + 1}**\n{enforce_tldr_shape(sanitize_summary(checked))}")
+        parts.append(f"**🧩 Part {i + 1}**\n{enforce_tldr_shape(sanitize_summary(summary))}")
 
     return "\n\n".join(parts)

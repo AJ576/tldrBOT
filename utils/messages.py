@@ -27,7 +27,8 @@ async def get_messages(channel, hours=6, command_message_id=None, include_bots=F
         if not content:
             continue
 
-        messages.append(f"[{idx}] {msg.author.display_name}: {content}")
+        # was: messages.append(f"[{idx}] {msg.author.display_name}: {content}")
+        messages.append(f"{idx}. {msg.author.display_name}: {content}")
         idx += 1
 
     print(
