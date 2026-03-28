@@ -8,10 +8,10 @@ load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 class Config:
     # Tokens
     discord_token = os.getenv("DISCORD_TOKEN")
-    openai_api_key = os.getenv("OPENAI_API_KEY")
+    openai_api_key = os.getenv("GROQ_API_KEY")
 
     # Model
-    openai_model = "gpt-5-mini"
+    openai_model = "llama-3.3-70b-versatile"
     temperature = 0.25
     top_p = 0.9
 
