@@ -2,7 +2,8 @@ import asyncio
 import logging
 import random
 import time
-from openai import OpenAI, BadRequestError
+import google.generativeai as genai
+from groq import Groq
 from config import Config
 from utils.formatting import sanitize_summary, enforce_tldr_shape
 from utils.messages import chunk_messages
@@ -46,48 +47,96 @@ MERGE_RULES = f"""\
 
 MAX_FACTCHECK_EVIDENCE_CHARS = 12000
 
-_client = OpenAI(api_key=Config.openai_api_key)
+_gemini_model = None
+if Config.gemini_api_key:
+    genai.configure(api_key=Config.gemini_api_key)
+    _gemini_model = genai.GenerativeModel(Config.primary_model)
+
+_groq_client = Groq(api_key=Config.groq_api_key) if Config.groq_api_key else None
 
 
 def _is_error_summary(text: str) -> bool:
-    return text.startswith("[") and text.endswith("]")
+    return bool(text) and text.startswith("[") and text.endswith("]")
+
+
+def _is_transient_error(msg: str) -> bool:
+    msg = (msg or "").lower()
+    return any(k in msg for k in ("429", "rate", "timeout", "503", "connection", "unavailable"))
+
+
+def _extract_gemini_text(resp) -> str:
+    if getattr(resp, "text", None):
+        return (resp.text or "").strip()
+
+    parts = []
+    for cand in getattr(resp, "candidates", []) or []:
+        content = getattr(cand, "content", None)
+        for part in getattr(content, "parts", []) or []:
+            t = getattr(part, "text", None)
+            if t:
+                parts.append(t)
+    return "\n".join(parts).strip()
 
 
 def _call_groq(prompt: str) -> str:
+    """
+    Primary: Gemini (gemini-2.5-flash)
+    Fallback: Groq (llama-3.3-70b-versatile)
+    Kept function name for minimal downstream changes.
+    """
+    gemini_last_error = None
+
+    # 1) Primary: Gemini
+    if _gemini_model is not None:
+        for attempt in range(MAX_RETRIES):
+            try:
+                resp = _gemini_model.generate_content(
+                    prompt,
+                    generation_config={
+                        "temperature": Config.temperature,
+                        "top_p": Config.top_p,
+                    },
+                )
+                text = _extract_gemini_text(resp)
+                if text:
+                    return text
+                raise RuntimeError("Empty Gemini response")
+            except Exception as e:
+                gemini_last_error = str(e)
+                if _is_transient_error(gemini_last_error) and attempt < MAX_RETRIES - 1:
+                    base = RETRY_BASE_DELAY * (2 ** attempt)
+                    delay = min(MAX_BACKOFF_SECONDS, base + random.uniform(0, 0.75))
+                    log.warning("Gemini transient error; retrying in %.2fs", delay)
+                    time.sleep(delay)
+                    continue
+                break
+
+    # 2) Fallback: Groq
+    log.warning("Gemini failed, falling back to Groq. reason=%s", gemini_last_error)
+
+    if _groq_client is None:
+        return "[LLM unavailable: Gemini failed and Groq is not configured]"
+
     for attempt in range(MAX_RETRIES):
         try:
-            req = {
-                "model": Config.openai_model,
-                "messages": [{"role": "user", "content": prompt}],
-            }
-
-            # gpt-5-* chat endpoint rejects non-default temperature/top_p
-            if not Config.openai_model.startswith("gpt-5"):
-                req["temperature"] = Config.temperature
-                req["top_p"] = Config.top_p
-
-            completion = _client.chat.completions.create(**req)
+            completion = _groq_client.chat.completions.create(
+                model=Config.fallback_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=Config.temperature,
+                top_p=Config.top_p,
+            )
             return completion.choices[0].message.content or ""
-
-        except BadRequestError as e:
-            log.exception("OpenAI request invalid")
-            msg = str(e).lower()
-            if "temperature" in msg or "top_p" in msg:
-                return "[OpenAI config error: model does not support this temperature/top_p setting]"
-            return "[OpenAI request invalid: check model name and API parameters]"
-
         except Exception as e:
-            msg = str(e).lower()
-            is_transient = any(k in msg for k in ("429", "rate", "timeout", "503", "connection"))
-            if is_transient and attempt < MAX_RETRIES - 1:
+            msg = str(e)
+            if _is_transient_error(msg) and attempt < MAX_RETRIES - 1:
                 base = RETRY_BASE_DELAY * (2 ** attempt)
                 delay = min(MAX_BACKOFF_SECONDS, base + random.uniform(0, 0.75))
-                log.warning("OpenAI transient error; retrying in %.2fs (attempt %d/%d)", delay, attempt + 1, MAX_RETRIES)
+                log.warning("Groq transient error; retrying in %.2fs", delay)
                 time.sleep(delay)
                 continue
-            log.exception("OpenAI API request failed")
-            return "[OpenAI API request failed]"
-    return "[OpenAI API request failed]"
+            log.exception("Groq API request failed")
+            return "[Gemini failed; Groq fallback failed]"
+    return "[Gemini failed; Groq fallback failed]"
 
 
 def _build_chunk_prompt(text: str) -> str:

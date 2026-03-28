@@ -8,10 +8,12 @@ load_dotenv(dotenv_path=Path(__file__).with_name(".env"))
 class Config:
     # Tokens
     discord_token = os.getenv("DISCORD_TOKEN")
-    openai_api_key = os.getenv("GROQ_API_KEY")
+    gemini_api_key = os.getenv("GEMINI_KEY")
+    groq_api_key = os.getenv("GROQ_API_KEY")
 
-    # Model
-    openai_model = "llama-3.3-70b-versatile"
+    # Models
+    primary_model = "gemini-2.5-flash"
+    fallback_model = "llama-3.3-70b-versatile"
     temperature = 0.25
     top_p = 0.9
 
