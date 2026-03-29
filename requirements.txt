@@ -2,3 +2,4 @@ discord.py
 python-dotenv
 groq
 openai
+google-generativeai
