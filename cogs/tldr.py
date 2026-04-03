@@ -1,10 +1,9 @@
 from datetime import datetime, timedelta, timezone
-import traceback
 import discord
 from discord import app_commands
 from discord.ext import commands
 from config import Config
-from utils.messages import get_messages
+from utils.messages import get_messages, get_messages_between
 from utils.formatting import send_long_message
 from services.summarizer import summarize_full, summarize_parallel
 
@@ -56,6 +55,50 @@ class TldrCog(commands.Cog):
 
         await send_long_message(output, summary)
         await self._reply(interaction, f"Done. Posted in {output.mention}.", ephemeral=True)
+
+    async def _fetch_and_summarize_day(
+        self,
+        interaction: discord.Interaction,
+        date_str: str,
+        source_channel,
+        output_channel,
+        bots: bool,
+    ):
+        source = source_channel or interaction.channel
+        output = output_channel or interaction.channel
+
+        if not isinstance(source, discord.TextChannel) or not isinstance(output, discord.TextChannel):
+            await self._reply(interaction, "This command only supports text channels.", ephemeral=True)
+            return
+
+        try:
+            day_start = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            await self._reply(interaction, "Invalid date. Use `YYYY-MM-DD` (UTC).", ephemeral=True)
+            return
+
+        day_end = day_start + timedelta(days=1)
+
+        if not interaction.response.is_done():
+            await interaction.response.defer(thinking=True)
+
+        messages = await get_messages_between(
+            source,
+            day_start,
+            day_end,
+            command_message_id=None,
+            include_bots=bots,
+        )
+
+        if not messages:
+            await self._reply(interaction, f"No messages found on **{date_str}** (UTC).", ephemeral=True)
+            return
+
+        # Slightly more detailed than /tldr: use full mode for day recaps
+        summary = summarize_full(messages)
+
+        await send_long_message(output, summary)
+        await self._reply(interaction, f"Done. Posted day summary for **{date_str}** in {output.mention}.", ephemeral=True)
 
     async def _fetch_user_messages(self, channel, user_id: int, hours: int, include_bots: bool = False):
         """Fetch only messages from a specific user by ID."""
@@ -125,6 +168,24 @@ class TldrCog(commands.Cog):
         bots: bool = False,
     ):
         await self._fetch_and_summarize(interaction, hours, source_channel, output_channel, bots, mode="full")
+
+    @app_commands.command(name="tldr_day", description="Summarize one full day (YYYY-MM-DD, UTC)")
+    @app_commands.describe(
+        date="Date in YYYY-MM-DD (UTC)",
+        source_channel="Channel to read messages from",
+        output_channel="Channel to post summary in",
+        bots="Include bot messages",
+    )
+    @app_commands.checks.cooldown(1, Config.cooldown_seconds, key=lambda i: (i.guild_id, i.channel_id))
+    async def tldr_day(
+        self,
+        interaction: discord.Interaction,
+        date: str,
+        source_channel: discord.TextChannel | None = None,
+        output_channel: discord.TextChannel | None = None,
+        bots: bool = False,
+    ):
+        await self._fetch_and_summarize_day(interaction, date, source_channel, output_channel, bots)
 
     @app_commands.command(name="tldr_help", description="Show TLDR command help")
     async def tldr_help(self, interaction: discord.Interaction):
