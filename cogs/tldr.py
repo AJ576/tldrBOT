@@ -140,7 +140,7 @@ class TldrCog(commands.Cog):
         output_channel="Channel to post summary in",
         bots="Include bot messages",
     )
-    @app_commands.checks.cooldown(1, Config.cooldown_seconds, key=lambda i: (i.guild_id, i.channel_id))
+    @app_commands.checks.cooldown(1, Config.cooldown_seconds, key=lambda i: (i.guild_id, i.user.id))
     async def tldr(
         self,
         interaction: discord.Interaction,
@@ -158,7 +158,7 @@ class TldrCog(commands.Cog):
         output_channel="Channel to post summary in",
         bots="Include bot messages",
     )
-    @app_commands.checks.cooldown(1, Config.cooldown_seconds, key=lambda i: (i.guild_id, i.channel_id))
+    @app_commands.checks.cooldown(1, Config.cooldown_seconds, key=lambda i: (i.guild_id, i.user.id))
     async def tldr_full(
         self,
         interaction: discord.Interaction,
@@ -176,7 +176,7 @@ class TldrCog(commands.Cog):
         output_channel="Channel to post summary in",
         bots="Include bot messages",
     )
-    @app_commands.checks.cooldown(1, Config.cooldown_seconds, key=lambda i: (i.guild_id, i.channel_id))
+    @app_commands.checks.cooldown(1, Config.cooldown_seconds, key=lambda i: (i.guild_id, i.user.id))
     async def tldr_day(
         self,
         interaction: discord.Interaction,
@@ -234,7 +234,7 @@ class TldrCog(commands.Cog):
         hours="How many hours back (default 24)",
         source_channel="Channel to read from (default current)",
     )
-    @app_commands.checks.cooldown(1, Config.cooldown_seconds, key=lambda i: (i.guild_id, i.channel_id))
+    @app_commands.checks.cooldown(1, Config.cooldown_seconds, key=lambda i: (i.guild_id, i.user.id))
     async def tldr_user(
         self,
         interaction: discord.Interaction,
