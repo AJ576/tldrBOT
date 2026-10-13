@@ -1,6 +1,6 @@
 # Discord TLDR Bot
 
-A Discord bot that summarizes channel conversations with a humorous tone using Gemini.
+A Discord bot that summarizes channel conversations with a humorous tone using Groq (Llama 3.3 70B).
 
 ## Features
 
@@ -70,10 +70,10 @@ python main.py
 
 ## Environment Variables
 
-This project currently reads these variables in [`main.py`](main.py):
+This project reads these variables in [`config.py`](config.py):
 
 - `DISCORD_TOKEN`
-- `GEMINI_KEY`
+- `GROQ_API_KEY`
 
 See [`.env.example`](.env.example).
 

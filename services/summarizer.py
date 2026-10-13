@@ -2,7 +2,6 @@ import asyncio
 import logging
 import random
 import time
-import google.generativeai as genai
 from groq import Groq
 from config import Config
 from utils.formatting import sanitize_summary, enforce_tldr_shape
@@ -12,7 +11,6 @@ log = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2  # seconds
-STAGGER_DELAY = 1.5   # seconds between parallel launches
 MAX_BACKOFF_SECONDS = 20
 
 PERSONALITY = """\
@@ -47,12 +45,11 @@ MERGE_RULES = f"""\
 
 MAX_FACTCHECK_EVIDENCE_CHARS = 12000
 
-_gemini_model = None
-if Config.gemini_api_key:
-    genai.configure(api_key=Config.gemini_api_key)
-    _gemini_model = genai.GenerativeModel(Config.primary_model)
-
 _groq_client = Groq(api_key=Config.groq_api_key) if Config.groq_api_key else None
+
+# Bounds how many chunk summaries hit the API at once, so a large window
+# doesn't fire every chunk simultaneously and trip rate limits.
+_llm_semaphore = asyncio.Semaphore(Config.max_concurrent_llm_calls)
 
 
 def _is_error_summary(text: str) -> bool:
@@ -64,68 +61,23 @@ def _is_transient_error(msg: str) -> bool:
     return any(k in msg for k in ("429", "rate", "timeout", "503", "connection", "unavailable"))
 
 
-def _extract_gemini_text(resp) -> str:
-    if getattr(resp, "text", None):
-        return (resp.text or "").strip()
-
-    parts = []
-    for cand in getattr(resp, "candidates", []) or []:
-        content = getattr(cand, "content", None)
-        for part in getattr(content, "parts", []) or []:
-            t = getattr(part, "text", None)
-            if t:
-                parts.append(t)
-    return "\n".join(parts).strip()
-
-
 def _call_groq(prompt: str) -> str:
-    """
-    Primary: Gemini (gemini-2.5-flash)
-    Fallback: Groq (llama-3.3-70b-versatile)
-    Kept function name for minimal downstream changes.
-    """
-    gemini_last_error = None
-
-    # 1) Primary: Gemini
-    if _gemini_model is not None:
-        for attempt in range(MAX_RETRIES):
-            try:
-                resp = _gemini_model.generate_content(
-                    prompt,
-                    generation_config={
-                        "temperature": Config.temperature,
-                        "top_p": Config.top_p,
-                    },
-                )
-                text = _extract_gemini_text(resp)
-                if text:
-                    return text
-                raise RuntimeError("Empty Gemini response")
-            except Exception as e:
-                gemini_last_error = str(e)
-                if _is_transient_error(gemini_last_error) and attempt < MAX_RETRIES - 1:
-                    base = RETRY_BASE_DELAY * (2 ** attempt)
-                    delay = min(MAX_BACKOFF_SECONDS, base + random.uniform(0, 0.75))
-                    log.warning("Gemini transient error; retrying in %.2fs", delay)
-                    time.sleep(delay)
-                    continue
-                break
-
-    # 2) Fallback: Groq
-    log.warning("Gemini failed, falling back to Groq. reason=%s", gemini_last_error)
-
+    """Send a prompt to Groq, retrying transient failures with backoff."""
     if _groq_client is None:
-        return "[LLM unavailable: Gemini failed and Groq is not configured]"
+        return "[LLM unavailable: GROQ_API_KEY is not configured]"
 
     for attempt in range(MAX_RETRIES):
         try:
             completion = _groq_client.chat.completions.create(
-                model=Config.fallback_model,
+                model=Config.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=Config.temperature,
                 top_p=Config.top_p,
             )
-            return completion.choices[0].message.content or ""
+            text = (completion.choices[0].message.content or "").strip()
+            if text:
+                return text
+            raise RuntimeError("Empty Groq response")
         except Exception as e:
             msg = str(e)
             if _is_transient_error(msg) and attempt < MAX_RETRIES - 1:
@@ -135,8 +87,8 @@ def _call_groq(prompt: str) -> str:
                 time.sleep(delay)
                 continue
             log.exception("Groq API request failed")
-            return "[Gemini failed; Groq fallback failed]"
-    return "[Gemini failed; Groq fallback failed]"
+            return "[Groq request failed]"
+    return "[Groq request failed]"
 
 
 def _build_chunk_prompt(text: str) -> str:
@@ -168,6 +120,12 @@ Rules (strict):
 
 Partial summaries:
 {parts}"""
+
+
+async def summarize_chunk_async(chunk: list[str], compact: bool = False) -> str:
+    """Run summarize_chunk off the event loop, no more than N at a time."""
+    async with _llm_semaphore:
+        return await asyncio.to_thread(summarize_chunk, chunk, compact)
 
 
 def summarize_chunk(chunk: list[str], compact: bool = False) -> str:
@@ -211,14 +169,14 @@ def _fact_check_summary(summary: str, messages: list[str]) -> str:
 
 
 async def summarize_parallel(messages: list[str]) -> str:
+    """Fan-out: summarize chunks with bounded concurrency, then merge into one summary."""
     print(f"[ai] summarize_parallel start total_messages={len(messages)}")
-    """Fan-out: summarize each chunk with staggered starts, then merge into one summary."""
     if not messages:
         return "[No messages to summarize]"
 
     # For smaller windows, skip lossy merge and summarize once.
     if len(messages) <= Config.single_pass_max_messages:
-        first = summarize_chunk(messages, compact=True)
+        first = await summarize_chunk_async(messages, compact=True)
         # checked = await asyncio.to_thread(_fact_check_summary, first, messages)
         # return enforce_tldr_shape(sanitize_summary(checked))
         return enforce_tldr_shape(sanitize_summary(first))
@@ -228,15 +186,11 @@ async def summarize_parallel(messages: list[str]) -> str:
         return "[No messages to summarize]"
 
     if len(chunks) == 1:
-        return summarize_chunk(chunks[0], compact=True)
+        return await summarize_chunk_async(chunks[0], compact=True)
 
-    tasks = []
-    for i, chunk in enumerate(chunks):
-        if i > 0:
-            await asyncio.sleep(STAGGER_DELAY)
-        tasks.append(asyncio.to_thread(summarize_chunk, chunk, True))
-
-    partial_summaries = await asyncio.gather(*tasks)
+    partial_summaries = await asyncio.gather(
+        *(summarize_chunk_async(chunk, True) for chunk in chunks)
+    )
 
     valid = [s.strip() for s in partial_summaries if s and not _is_error_summary(s)]
     if not valid:

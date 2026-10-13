@@ -38,8 +38,11 @@ def enforce_tldr_shape(text: str, max_sections: int = Config.max_sections) -> st
         heading = lines[0]
         body = " ".join(lines[1:]).strip()
 
-        if not re.match(r"^\*\*.*\*\*$", heading):
-            heading = f"**{heading.strip(':')}**"
+        # Normalize first: the model often emits partially-bolded headings like
+        # "**Title** 🎉", which a bare "already bold?" test would double-wrap.
+        heading = heading.replace("**", "").strip().strip(":").strip()
+        if heading:
+            heading = f"**{heading}**"
 
         # Keep body as-is; don't slice sentences.
         # Let Discord char limit handle overflow instead.
