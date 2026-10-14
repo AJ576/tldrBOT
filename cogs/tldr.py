@@ -313,7 +313,7 @@ class TldrCog(commands.Cog):
     async def tldr_user(
         self,
         interaction: discord.Interaction,
-        user: discord.User,
+        user: Union[discord.Member, discord.User],
         hours: app_commands.Range[int, 1, 24] = 24,
         source_channel: SupportedChannel | None = None,
     ):
@@ -325,17 +325,30 @@ class TldrCog(commands.Cog):
             return
         source, _ = resolved
 
-        messages, _truncated = await get_user_messages(source, user.id, hours, include_bots=False)
+        # Prefer member with server nickname/profile if available
+        guild = getattr(source, "guild", None) or interaction.guild
+        target_user = user
+        if guild and not isinstance(user, discord.Member):
+            member = guild.get_member(user.id)
+            if member is None:
+                try:
+                    member = await guild.fetch_member(user.id)
+                except (discord.NotFound, discord.HTTPException):
+                    member = None
+            if member is not None:
+                target_user = member
+
+        messages, _truncated = await get_user_messages(source, target_user.id, hours, include_bots=False)
 
         if not messages:
             await self._reply(
                 interaction,
-                f"No messages from **{user.display_name}** in the last {hours} hour(s).",
+                f"No messages from **{target_user.display_name}** in the last {hours} hour(s).",
             )
             return
 
-        print(f"[ai] tldr_user roast start user={user.display_name} ({user.id}) message_count={len(messages)}")
-        roast = await self._generate_user_roast(user.display_name, messages)
+        print(f"[ai] tldr_user roast start user={target_user.display_name} ({target_user.id}) message_count={len(messages)}")
+        roast = await self._generate_user_roast(target_user.display_name, messages)
         print(f"[ai] tldr_user roast done chars={len(roast or '')}")
 
         await self._reply(interaction, roast, ephemeral=False)

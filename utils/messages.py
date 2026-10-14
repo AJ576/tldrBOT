@@ -1,3 +1,4 @@
+import discord
 from collections import deque
 from datetime import timedelta, timezone, datetime
 
@@ -22,6 +23,26 @@ async def _collect(channel, *, after=None, before=None, command_message_id=None,
     kept = deque(maxlen=cap)
     seen = 0
 
+    guild = getattr(channel, "guild", None)
+    author_name_cache = {}
+
+    async def _resolve_name(author):
+        if not guild:
+            return getattr(author, "display_name", str(author))
+        if author.id in author_name_cache:
+            return author_name_cache[author.id]
+
+        member = guild.get_member(author.id)
+        if member is None:
+            try:
+                member = await guild.fetch_member(author.id)
+            except (discord.NotFound, discord.HTTPException):
+                member = None
+
+        name = member.display_name if member is not None else getattr(author, "display_name", str(author))
+        author_name_cache[author.id] = name
+        return name
+
     async for msg in channel.history(limit=None, after=after, before=before, oldest_first=True):
         if command_message_id and msg.id == command_message_id:
             continue
@@ -35,7 +56,8 @@ async def _collect(channel, *, after=None, before=None, command_message_id=None,
             continue
 
         seen += 1
-        kept.append(f"{msg.author.display_name}: {content}")
+        author_name = await _resolve_name(msg.author)
+        kept.append(f"{author_name}: {content}")
 
     truncated = seen > cap
     messages = [f"{i}. {line}" for i, line in enumerate(kept, start=1)]
