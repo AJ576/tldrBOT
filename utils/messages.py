@@ -1,8 +1,11 @@
+import logging
 import discord
 from collections import deque
 from datetime import timedelta, timezone, datetime
 
 from config import Config
+
+logger = logging.getLogger(__name__)
 
 
 async def _collect(channel, *, after=None, before=None, command_message_id=None,
@@ -12,11 +15,14 @@ async def _collect(channel, *, after=None, before=None, command_message_id=None,
     When the window holds more than the cap, the OLDEST messages are dropped so
     the recap still covers the most recent activity. Returns (lines, truncated).
     """
-    print(
-        f"[collector] {label} channel={getattr(channel, 'id', 'unknown')} "
-        f"after={after.isoformat() if after else None} "
-        f"before={before.isoformat() if before else None} "
-        f"include_bots={include_bots} author_id={author_id}"
+    logger.info(
+        "[collector] %s channel=%s after=%s before=%s include_bots=%s author_id=%s",
+        label,
+        getattr(channel, "id", "unknown"),
+        after.isoformat() if after else None,
+        before.isoformat() if before else None,
+        include_bots,
+        author_id,
     )
 
     cap = Config.max_messages_fetched
@@ -62,9 +68,13 @@ async def _collect(channel, *, after=None, before=None, command_message_id=None,
     truncated = seen > cap
     messages = [f"{i}. {line}" for i, line in enumerate(kept, start=1)]
 
-    print(
-        f"[collector] {label} done channel={getattr(channel, 'id', 'unknown')} "
-        f"matched={seen} kept={len(messages)} truncated={truncated}"
+    logger.info(
+        "[collector] %s done channel=%s matched=%d kept=%d truncated=%s",
+        label,
+        getattr(channel, "id", "unknown"),
+        seen,
+        len(messages),
+        truncated,
     )
     return messages, truncated
 

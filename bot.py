@@ -1,6 +1,8 @@
+import logging
 import discord
 from discord.ext import commands
-from config import Config
+
+logger = logging.getLogger(__name__)
 
 
 def create_bot() -> commands.Bot:
@@ -9,7 +11,7 @@ def create_bot() -> commands.Bot:
     intents.members = True
 
     bot = commands.Bot(
-        command_prefix=Config.command_prefix,
+        command_prefix=commands.when_mentioned,
         intents=intents,
         allowed_mentions=discord.AllowedMentions.none(),
         help_command=None,
@@ -17,6 +19,6 @@ def create_bot() -> commands.Bot:
 
     @bot.event
     async def on_ready():
-        print(f"Logged in as {bot.user}")
+        logger.info("Logged in as %s", bot.user)
 
     return bot
