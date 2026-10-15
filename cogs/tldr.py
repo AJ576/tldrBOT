@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 import traceback
 from datetime import datetime, timedelta, timezone
@@ -10,6 +11,8 @@ from config import Config
 from utils.messages import get_messages, get_messages_between, get_user_messages
 from utils.formatting import send_long_message
 from services.summarizer import summarize_full, summarize_parallel
+
+logger = logging.getLogger(__name__)
 
 SupportedChannel = Union[
     discord.TextChannel,
@@ -33,7 +36,7 @@ class TldrCog(commands.Cog):
                 await interaction.response.send_message(text, ephemeral=ephemeral)
         except discord.HTTPException as exc:
             # Interaction token expired / already acknowledged elsewhere: nothing to do.
-            print(f"[bot] could not reply to interaction: {exc}")
+            logger.warning("[bot] could not reply to interaction: %s", exc)
 
     async def _defer(self, interaction: discord.Interaction, ephemeral: bool = True) -> bool:
         """Acknowledge the interaction immediately. Returns False if the token is already dead.
@@ -52,18 +55,22 @@ class TldrCog(commands.Cog):
         try:
             await interaction.response.defer(thinking=True, ephemeral=ephemeral)
         except discord.HTTPException as exc:
-            print(
-                f"[bot] could not defer interaction: {exc} "
-                f"(age_on_arrival={age:.2f}s defer_call={time.monotonic() - started:.2f}s "
-                f"gateway_latency={self.bot.latency * 1000:.0f}ms)"
+            logger.warning(
+                "[bot] could not defer interaction: %s (age_on_arrival=%.2fs defer_call=%.2fs gateway_latency=%.0fms)",
+                exc,
+                age,
+                time.monotonic() - started,
+                self.bot.latency * 1000,
             )
             return False
 
         elapsed = time.monotonic() - started
         if age + elapsed > 1.0:
-            print(
-                f"[bot] slow ack: age_on_arrival={age:.2f}s defer_call={elapsed:.2f}s "
-                f"gateway_latency={self.bot.latency * 1000:.0f}ms"
+            logger.warning(
+                "[bot] slow ack: age_on_arrival=%.2fs defer_call=%.2fs gateway_latency=%.0fms",
+                age,
+                elapsed,
+                self.bot.latency * 1000,
             )
         return True
 
@@ -347,9 +354,14 @@ class TldrCog(commands.Cog):
             )
             return
 
-        print(f"[ai] tldr_user roast start user={target_user.display_name} ({target_user.id}) message_count={len(messages)}")
+        logger.info(
+            "[ai] tldr_user roast start user=%s (%s) message_count=%d",
+            target_user.display_name,
+            target_user.id,
+            len(messages),
+        )
         roast = await self._generate_user_roast(target_user.display_name, messages)
-        print(f"[ai] tldr_user roast done chars={len(roast or '')}")
+        logger.info("[ai] tldr_user roast done chars=%d", len(roast or ""))
 
         await self._reply(interaction, roast, ephemeral=False)
 
@@ -407,9 +419,7 @@ Write the roast now:"""
         if isinstance(error, app_commands.CommandOnCooldown):
             await self._reply(interaction, f"Slow down — try again in {error.retry_after:.0f}s.")
             return
-        print(f"----- APP COMMAND ERROR ({name}) -----")
-        traceback.print_exception(type(error), error, error.__traceback__)
-        print("-------------------------------------")
+        logger.error("App command error (%s): %s", name, error, exc_info=error)
         await self._reply(interaction, "Command failed. Check logs.")
 
     @tldr.error

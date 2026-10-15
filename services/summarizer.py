@@ -8,6 +8,7 @@ from utils.formatting import sanitize_summary, enforce_tldr_shape
 from utils.messages import chunk_messages
 
 log = logging.getLogger(__name__)
+logger = log
 
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2  # seconds
@@ -129,10 +130,10 @@ async def summarize_chunk_async(chunk: list[str], compact: bool = False) -> str:
 
 
 def summarize_chunk(chunk: list[str], compact: bool = False) -> str:
-    print(f"[ai] sending chunk messages={len(chunk)} compact={compact}")
+    logger.info("[ai] sending chunk messages=%d compact=%s", len(chunk), compact)
     prompt = _build_chunk_prompt("\n".join(chunk))
     raw = _call_groq(prompt)
-    print(f"[ai] received chunk chars={len(raw or '')}")
+    logger.info("[ai] received chunk chars=%d", len(raw or ""))
     if _is_error_summary(raw):
         return raw
     cleaned = sanitize_summary(raw)
@@ -170,7 +171,7 @@ def _fact_check_summary(summary: str, messages: list[str]) -> str:
 
 async def summarize_parallel(messages: list[str]) -> str:
     """Fan-out: summarize chunks with bounded concurrency, then merge into one summary."""
-    print(f"[ai] summarize_parallel start total_messages={len(messages)}")
+    logger.info("[ai] summarize_parallel start total_messages=%d", len(messages))
     if not messages:
         return "[No messages to summarize]"
 
@@ -200,10 +201,10 @@ async def summarize_parallel(messages: list[str]) -> str:
         return valid[0]
 
     merge_prompt = _build_merge_prompt(valid)
-    print(f"[ai] merge send partials={len(valid)}")
+    logger.info("[ai] merge send partials=%d", len(valid))
     raw = await asyncio.to_thread(_call_groq, merge_prompt)
-    print(f"[ai] merge received chars={len(raw or '')}")
-    print("[ai] ready for next")
+    logger.info("[ai] merge received chars=%d", len(raw or ""))
+    logger.debug("[ai] ready for next")
     if _is_error_summary(raw):
         return raw
 
