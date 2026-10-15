@@ -48,7 +48,7 @@ class Config(metaclass=_ConfigMeta):
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
 
     # Models
-    model: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    model: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     temperature: float = 0.25
     top_p: float = 0.9
 
