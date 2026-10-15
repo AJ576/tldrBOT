@@ -1,4 +1,5 @@
 import logging
+import re
 import discord
 from collections import deque
 from datetime import timedelta, timezone, datetime
@@ -6,6 +7,66 @@ from datetime import timedelta, timezone, datetime
 from config import Config
 
 logger = logging.getLogger(__name__)
+
+TENOR_GIPHY_RE = re.compile(
+    r"https?://(?:[a-zA-Z0-9_.]+\.)?(?:tenor\.com/view/|giphy\.com/gifs/)([\w-]+)",
+    re.IGNORECASE,
+)
+
+
+def format_gif_slug(slug: str) -> str:
+    slug = re.sub(r"-\d+$", "", slug)
+    slug = re.sub(r"-gif$", "", slug, flags=re.I)
+    slug = re.sub(r"-[a-zA-Z0-9]{10,}$", "", slug)
+    cleaned = slug.replace("-", " ").strip()
+    if len(cleaned) > 50:
+        cleaned = cleaned[:47] + "..."
+    return cleaned if cleaned else "animated gif"
+
+
+def enrich_content(text: str, attachments=None, stickers=None, max_media: int = 3) -> str:
+    """Enrich message content by parsing GIF picker URLs, attachments, and stickers.
+
+    Replaces raw Tenor/Giphy links with [GIF: <description>], and includes
+    attached GIFs, images, and stickers.
+    """
+    def _replace_gif(match):
+        raw_slug = match.group(1)
+        desc = format_gif_slug(raw_slug)
+        return f"[GIF: {desc}]"
+
+    text = TENOR_GIPHY_RE.sub(_replace_gif, text or "").strip()
+
+    media_parts = []
+    if stickers and type(stickers).__name__ != "MagicMock":
+        for s in stickers:
+            name = getattr(s, "name", None)
+            if isinstance(name, str) and name:
+                media_parts.append(f"[Sticker: {name}]")
+
+    if attachments and type(attachments).__name__ != "MagicMock":
+        for a in attachments:
+            fn = getattr(a, "filename", None)
+            if isinstance(fn, str) and fn:
+                lower_fn = fn.lower()
+                if lower_fn.endswith(".gif"):
+                    media_parts.append(f"[GIF: {fn}]")
+                elif any(lower_fn.endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".webp")):
+                    media_parts.append(f"[Image: {fn}]")
+                else:
+                    media_parts.append(f"[Attachment: {fn}]")
+
+    if media_parts:
+        if len(media_parts) > max_media:
+            extra = len(media_parts) - max_media
+            media_parts = media_parts[:max_media]
+            media_parts.append(f"[+{extra} more files]")
+        media_str = " ".join(media_parts)
+        if text:
+            return f"{text} {media_str}".strip()
+        return media_str
+
+    return text
 
 
 def format_reactions(reactions, max_reactions: int = 5) -> str:
@@ -69,21 +130,23 @@ async def format_reply_context(
     ref_author = None
     ref_content = None
 
-    resolved = getattr(ref, "resolved", None)
-    if resolved is not None and hasattr(resolved, "author") and resolved.author is not None:
-        if name_resolver is not None:
-            ref_author = await name_resolver(resolved.author)
-        else:
-            ref_author = getattr(resolved.author, "display_name", str(resolved.author))
-        ref_content = (getattr(resolved, "clean_content", "") or "").replace("\n", " ").strip()
-    elif isinstance(resolved, discord.DeletedReferencedMessage) or (resolved is not None and not hasattr(resolved, "author")):
-        ref_author = "deleted message"
-        ref_content = ""
-
-    if not ref_author:
-        msg_id = getattr(ref, "message_id", None)
-        if msg_id in seen_messages:
-            ref_author, ref_content = seen_messages[msg_id]
+    msg_id = getattr(ref, "message_id", None)
+    if msg_id in seen_messages:
+        ref_author, ref_content = seen_messages[msg_id]
+    else:
+        resolved = getattr(ref, "resolved", None)
+        if resolved is not None and hasattr(resolved, "author") and resolved.author is not None:
+            if name_resolver is not None:
+                ref_author = await name_resolver(resolved.author)
+            else:
+                ref_author = getattr(resolved.author, "display_name", str(resolved.author))
+            raw_ref = (getattr(resolved, "clean_content", "") or "").replace("\n", " ").strip()
+            ref_attachments = getattr(resolved, "attachments", None)
+            ref_stickers = getattr(resolved, "stickers", None)
+            ref_content = enrich_content(raw_ref, attachments=ref_attachments, stickers=ref_stickers)
+        elif isinstance(resolved, discord.DeletedReferencedMessage) or (resolved is not None and not hasattr(resolved, "author")):
+            ref_author = "deleted message"
+            ref_content = ""
 
     if not ref_author:
         ref_author = "earlier message"
@@ -153,7 +216,10 @@ async def _collect(channel, *, after=None, before=None, command_message_id=None,
         if author_id is not None and msg.author.id != author_id:
             continue
 
-        content = (msg.clean_content or "").strip()
+        raw_content = (msg.clean_content or "").strip()
+        attachments = getattr(msg, "attachments", None)
+        stickers = getattr(msg, "stickers", None)
+        content = enrich_content(raw_content, attachments=attachments, stickers=stickers)
         if not content:
             continue
 
