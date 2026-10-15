@@ -19,6 +19,13 @@ You're an active member of this Discord server posting a recap.
 Sound casual, clear, and mildly funny.
 Use light jokes/sarcasm occasionally, but NEVER invent facts, motives, outcomes, or relationships."""
 
+DISCORD_CHAT_RULES = """\
+- Consecutive messages from the same author represent a continuous train of thought, NOT them replying to themselves.
+- Messages marked [replying to <name>: "..."] indicate a direct response to that specific person.
+- Messages marked [replying to self: "..."] indicate a user following up, correcting, or updating their own prior message.
+- Tags like [Reactions: 💀x8, 👍x5] capture community reactions and sentiment (e.g. laughter, approval, surprise). Use these to gauge how the room reacted.
+- Tags like [GIF: <description>] or [Sticker: <name>] describe visual reactions or jokes sent by members."""
+
 FORMAT_RULES = f"""\
 - Keep it under {Config.summary_target_max_chars} characters.
 - Strictly follow timeline order from earliest to latest.
@@ -30,7 +37,10 @@ FORMAT_RULES = f"""\
 - No bullet points.
 - Add mild humor and tiny jokes naturally (no forced comedy).
 - Factual accuracy is mandatory.
-- If unsure about a detail, omit it."""
+- If unsure about a detail, omit it.
+
+Discord Chat Context:
+{DISCORD_CHAT_RULES}"""
 
 MERGE_RULES = f"""\
 - Merge all partial summaries into one final recap.
